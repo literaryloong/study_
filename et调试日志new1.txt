@@ -365,3 +365,133 @@ IDEA 2017.1.6 et
 8. 安心云ET运行一段时间报错：[Executor] Executor self-exiting due to : Driver spark-et-baed51c5f49f33339750c4602718b303-driver-svc.anxinyun.svc:7078 disassociated! Shutting down
 	应该是OOM后被kill,   继续排查spark内存泄漏的问题
 	参见[https://www.jianshu.com/p/80dc6209acc0]
+	
+9. Offsets out of range with no configured reset policy for partitions
+
+
+10. receiver进程 Lost connection. reconnecting...
+Client is connected (32100)
+	at org.eclipse.paho.client.mqttv3.internal.ExceptionHelper.createMqttException(ExceptionHelper.java:31)
+	at org.eclipse.paho.client.mqttv3.MqttAsyncClient.connect(MqttAsyncClient.java:731)
+	
+	在mqtt断连回调事件中，将connect方法修改为reconnect
+	*(继续跟踪是否解决)
+	
+11. spark monitor:
+记录
+http://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.scheduler.SparkListener
+
+12. org.apache.spark.SparkException: Job aborted due to stage failure: Task 0 in stage 2727.0 failed 4 times, most recent failure: Lost task 0.3 in stage 2727.0 (TID 1122, 10.244.1.109, executor 1): java.lang.NoClassDefFoundError: Could not initialize class et.agg.AggConfig$
+ 在商用环境用K8S部署ET时出错，同样版本在测试环境正常
+ 因为在AggConfig初始化代码中出现异常，JSON反序列化构造对象后调用redis初始部分属性超时（测试环境没有超时）
+
+13. java.lang.IllegalStateException: Previously tracked partitions [anxinyun_data2-0] been revoked by Kafka because of consumer rebalance. This is mostly due to another stream with same group id joined, please check if there're different streaming application misconfigure to use same group id. Fundamentally different stream should use different group id
+	在商用环境同时起2个K8S-ET，出错
+	
+14. ES启动失败：bootstrap checks failed  max virtual memory areas vm.max_map_count [65530] is too low
+	sudo sysctl -w vm.max_map_count=262144 [ref](https://github.com/docker-library/elasticsearch/issues/111)
+
+15. ES脑裂
+	https://my.oschina.net/LucasZhu/blog/1543971
+	在商用环境重启ES进程(jvm.Xmx设置),导致重启后没有自动组成集群
+	ET入库时显示数据插入成功，查询时发现数据丢失
+	
+16. java内存管理
+	BIG ISSUE
+	没有设置xmx，默认(java8) 1/6 physical memory ~ 1/4 physical memory
+	You can Check the default Java heap size by:
+	java -XX:+PrintFlagsFinal -version | grep -iE 'HeapSize|PermSize|ThreadStackSize'
+	
+	默认GC规则
+	Default garbage collectors:
+	Java 7 - Parallel GC
+	Java 8 - Parallel GC
+	Java 9 - G1 GC
+	Java 10 - G1 GC
+	[gcpic](https://i.stack.imgur.com/XHfx0.jpg)
+
+	【A Templator Handler】：AXY3.0部分java进程加上默认限制：（recalc,et-hdfs,abn,analyse,fc-alarm,aggregation）
+	-Xmx2G -Xms2G -server -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:InitiatingHeapOccupancyPercent=35 -XX:+DisableExplicitGC -verbose:gc -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCTimeStamps
+	
+17. KAFKA IN SPARK-STREAMING常见问题：
+	1). 提交OFFSET Rebalance的告警
+	
+	2).xxxx been revoked by Kafka because of consumer rebalance. This is mostly due to another stream with same group id joined,please check if there're different streaming application misconfigure to use same group id. Fundamentally different stream should use different group id
+	
+	3). Attempt to heart beat failed since the group is rebalancing, try to re-join group
+	
+	4). Offsets out of range with no configured reset policy for partitions
+		spark-stream的executor中auto.offset.reset置为none,所以当groupid中记录的offset超出记录的上下边界，报此错误
+		https://www.jianshu.com/p/40aee290f484
+	
+18. java.lang.OutOfMemoryError: unable to create new native thread
+	spark程序执行过程中出现HDFS相关错误
+	修改linux open files限制，设置 ulimit -n xxxx提升限制，ulimit -a查看
+	
+19. 安心云ES存储代码复制到知物云出现 NoAvaliable Nodes 错误
+	ES库版本问题(zhiwu-5.5  anxinyun-6.5)
+		<dependency>
+            <groupId>org.elasticsearch.client</groupId>
+            <artifactId>transport</artifactId>
+            <version>6.2.4</version>
+        </dependency>
+	
+20. flatMap && flatten
+	// flatMap  TraversableLike.scala
+
+	  def flatMap[B, That](f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+		def builder = bf(repr) // extracted to keep method size under 35 bytes, so that it can be JIT-inlined
+		val b = builder
+		for (x <- this) b ++= f(x).seq
+		b.result
+	  }
+	  
+	// flatten  GenericTraversableTemplate.scala
+
+	  def flatten[B](implicit asTraversable: A => /*<:<!!!*/ GenTraversableOnce[B]): CC[B] = {
+		val b = genericBuilder[B]
+		for (xs <- sequential)
+		  b ++= asTraversable(xs).seq
+		b.result()
+	  }
+
+	两者功能上几乎没有区别
+	通过 ++= 枚举元素进行添加，Map的相同键的元素会覆盖
+
+21. ElasticSearch: [script] Too many dynamic script compilations within, max: [75/5m]
+	修改ES配置 5.x max_compilations_per_minute   6.x script.max_compilations_rate
+	动态修改:
+	PUT /_cluster/settings
+	{
+		"transient" : {
+			"script.max_compilations_rate" : "750/5m"
+		}
+	}
+	
+## APACHE SPARK -> FLINK
+1. flink中使用joda.DateTime
+	flink程序启动时提示 `class org.joda.time.DateTime does not contain a getter for field iMillis`
+	  `Class class org.joda.time.DateTime cannot be used as a POJO type because not all fields are valid POJO fields`
+	 因为DateTime中iMillis字段没有setter和getter，所以flink不能将其视为POJO类型（更多flink支持数据类型参见 https://ci.apache.org/projects/flink/flink-docs-stable/dev/types_serialization.html）
+	 
+	 如果使用了检查点（checkpoint）机制，需要设置jodatime的kyro序列化机制（跟spark-streaming是一样的处理）
+
+2. flink启动过程出现NPE （NullPointException）
+	因为代码里我将一个case class设置为null了，后将其改成Option[case class]的类型问题解决
+	建议：如果数据结构中可能存在空（null）的情况，使用类型Option而不是直接用null赋值
+	
+3. java.lang.NoClassDefFoundError: org/slf4j/LoggerFactory
+	在IDEA中程序可以执行，而打包的jar包无法运行
+	你必须指定一种SLF4J的实现jar包在你的classpath里面，和接口jar包一样
+	https://stackoverflow.com/questions/12926899/java-lang-noclassdeffounderror-org-slf4j-loggerfactory
+
+	<!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-log4j12 -->
+	<dependency>
+		<groupId>org.slf4j</groupId>
+		<artifactId>slf4j-log4j12</artifactId>
+		<version>1.7.25</version>
+		<scope>test</scope>
+	</dependency>
+	
+	或者查看是否在maven shade插件中过滤了log相关jar
+	
