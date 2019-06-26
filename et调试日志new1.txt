@@ -222,6 +222,12 @@ systemctl restart kubelet
 		swapoff -a  
 
 		删除 /etc/fstab 表中的交换分区记录
+		
+		kubeadm init --pod-network-cidr=10.244.0.0/16 --skip-preflight-checks --kubernetes-version=1.8.2
+		
+		kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/v0.9.1/Documentation/kube-flannel.yml
+		
+		-- kubeadm join --token 54333d.2ce641d3fbefdb3d 10.8.30.36:6443 --discovery-token-ca-cert-hash sha256:7b3d09b3d359cef255fbbddd147618c4c68ea6374fdd05a0005253256ec1ad18
 	
 10. 其他错误
 	lient Version: version.Info{Major:"1", Minor:"8", GitVersion:"v1.8.2", GitCommit:"bdaeafa71f6c7c04636251031f93464384d54963", GitTreeState:"clean", BuildDate:"2017-10-24T19:48:57Z", GoVersion:"go1.8.3", Compiler:"gc", Platform:"linux/amd64"}
@@ -529,3 +535,142 @@ org.apache.hadoop.ipc.RemoteException(org.apache.hadoop.hdfs.protocol.AlreadyBei
 	 service ufw stop
 	 ufw disable
 	 systemctl disable firewalld
+	 
+9. hdfs故障
+	hdfs put错误：java.io.EOFException: Premature EOF: no length prefix available
+	org.apache.hadoop.hdfs.server.datanode.DataNode: PacketResponder: BP-1033460583-192.168.0.109-1538992976843:blk_1073805060_77492, type=LAST_IN_PIPELINE, downstreams=0:[]
+	java.io.IOException: Failed to move meta file for ReplicaBeingWritten, blk_1073805060_77492, RBW
+	  getNumBytes()     = 714
+	  getBytesOnDisk()  = 714
+	  getVisibleLength()= 714
+	  getVolume()       = /home/fs/ds/hadoop/data/current
+	  getBlockFile()    = /home/fs/ds/hadoop/data/current/BP-1033460583-192.168.0.109-1538992976843/current/rbw/blk_1073805060
+	  bytesAcked=714
+	  bytesOnDisk=714 from /home/fs/ds/hadoop/data/current/BP-1033460583-192.168.0.109-1538992976843/current/rbw/blk_1073805060_77492.meta to /home/fs/ds/hadoop/data/current/BP-1033460583-192.168.0.109-1538992976843/current/finalized/subdir38/subdir0/blk_1073805060_77492.meta
+		at org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.FsDatasetImpl.moveBlockFiles(FsDatasetImpl.java:460)
+		at org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.LDir.addBlock(LDir.java:78)
+		at org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.LDir.addBlock(LDir.java:92)
+		at org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.LDir.addBlock(LDir.java:92)
+		at org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.LDir.addBlock(LDir.java:71)
+		at org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.BlockPoolSlice.addBlock(BlockPoolSlice.java:248)
+		at org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.FsVolumeImpl.addBlock(FsVolumeImpl.java:199)
+		at org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.FsDatasetImpl.finalizeReplica(FsDatasetImpl.java:956)
+		at org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.FsDatasetImpl.finalizeBlock(FsDatasetImpl.java:937)
+		at org.apache.hadoop.hdfs.server.datanode.BlockReceiver$PacketResponder.finalizeBlock(BlockReceiver.java:1236)
+		at org.apache.hadoop.hdfs.server.datanode.BlockReceiver$PacketResponder.run(BlockReceiver.java:1196)
+		at java.lang.Thread.run(Thread.java:748)
+	Caused by: EIO: Input/output error
+		at org.apache.hadoop.io.nativeio.NativeIO.renameTo0(Native Method)
+		at org.apache.hadoop.io.nativeio.NativeIO.renameTo(NativeIO.java:828)
+		at org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.FsDatasetImpl.moveBlockFiles(FsDatasetImpl.java:458)
+		... 11 more
+		
+10. jenkins nodejs打包报错：Cannot find module 'internal/utils/type'
+	npm cache clean --force
+	
+11. dns错误
+	代理报错：
+	error: [FS-ERRHD] Error: getaddrinfo EAI_AGAIN console.theiota.cn:443
+		at GetAddrInfoReqWrap.onlookup [as oncomplete] (dns.js:67:26)
+	修改系统dns
+	1. vi /etc/network/interfaces   /etc/init.d/networking restart
+	2. vi /etc/resolvconf/resolv.conf.d/head  ++ nameserver 223.5.5.5    resolvconf -u   cat /etc/resolv.conf
+	重启k8s dns
+
+12. flink alarm error:
+	未解决
+	java.lang.Exception: Cannot deploy task Source: Custom Source -> Map -> Filter -> Map (1/3) (f25b30cf14999b76b9b0027000775c8f) - TaskManager (7f9dc13bd4fee89dac6f12a2960de37b @ flink-taskmanager-57f69bfd69-p5phv (dataPort=46709)) not responding after a rpcTimeout of 10000 ms
+	at org.apache.flink.runtime.executiongraph.Execution.lambda$deploy$5(Execution.java:624)
+	at java.util.concurrent.CompletableFuture.uniWhenComplete(CompletableFuture.java:760)
+	at java.util.concurrent.CompletableFuture$UniWhenComplete.tryFire(CompletableFuture.java:736)
+	at java.util.concurrent.CompletableFuture$Completion.run(CompletableFuture.java:442)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:511)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.access$201(ScheduledThreadPoolExecutor.java:180)
+	at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:293)
+	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
+	at java.lang.Thread.run(Thread.java:748)
+Caused by: akka.pattern.AskTimeoutException: Ask timed out on [Actor[akka.tcp://flink@flink-taskmanager-57f69bfd69-p5phv:41271/user/taskmanager_0#1593533421]] after [10000 ms]. Sender[null] sent message of type "org.apache.flink.runtime.rpc.messages.RemoteRpcInvocation".
+	at akka.pattern.PromiseActorRef$$anonfun$1.apply$mcV$sp(AskSupport.scala:604)
+	at akka.actor.Scheduler$$anon$4.run(Scheduler.scala:126)
+	at scala.concurrent.Future$InternalCallbackExecutor$.unbatchedExecute(Future.scala:601)
+	at scala.concurrent.BatchingExecutor$class.execute(BatchingExecutor.scala:109)
+	at scala.concurrent.Future$InternalCallbackExecutor$.execute(Future.scala:599)
+	at akka.actor.LightArrayRevolverScheduler$TaskHolder.executeTask(LightArrayRevolverScheduler.scala:329)
+	at akka.actor.LightArrayRevolverScheduler$$anon$4.executeBucket$1(LightArrayRevolverScheduler.scala:280)
+	at akka.actor.LightArrayRevolverScheduler$$anon$4.nextTick(LightArrayRevolverScheduler.scala:284)
+	at akka.actor.LightArrayRevolverScheduler$$anon$4.run(LightArrayRevolverScheduler.scala:236)
+	
+	差不多的问题：
+		2019-06-14 07:42:01,480 WARN  org.apache.flink.runtime.taskexecutor.TaskExecutor            - Could not send heartbeat to target with id 3f19b797fd46f27a86f571080bca7f7a.
+	java.util.concurrent.CompletionException: akka.pattern.AskTimeoutException: Ask timed out on [Actor[akka://flink/user/taskmanager_0#1723018049]] after [10000 ms]. Sender[null] sent message of type "org.apache.flink.runtime.rpc.messages.CallAsync".
+		at java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:292)
+		at java.util.concurrent.CompletableFuture.completeThrowable(CompletableFuture.java:308)
+		at java.util.concurrent.CompletableFuture.uniAccept(CompletableFuture.java:647)
+		at java.util.concurrent.CompletableFuture$UniAccept.tryFire(CompletableFuture.java:632)
+		at java.util.concurrent.CompletableFuture.postComplete(CompletableFuture.java:474)
+		at java.util.concurrent.CompletableFuture.completeExceptionally(CompletableFuture.java:1977)
+		at org.apache.flink.runtime.concurrent.FutureUtils$1.onComplete(FutureUtils.java:772)
+		at akka.dispatch.OnComplete.internal(Future.scala:258)
+		at akka.dispatch.OnComplete.internal(Future.scala:256)
+		at akka.dispatch.japi$CallbackBridge.apply(Future.scala:186)
+		at akka.dispatch.japi$CallbackBridge.apply(Future.scala:183)
+		at scala.concurrent.impl.CallbackRunnable.run(Promise.scala:36)
+		at org.apache.flink.runtime.concurrent.Executors$DirectExecutionContext.execute(Executors.java:83)
+		at scala.concurrent.impl.CallbackRunnable.executeWithValue(Promise.scala:44)
+		at scala.concurrent.impl.Promise$DefaultPromise.tryComplete(Promise.scala:252)
+		at akka.pattern.PromiseActorRef$$anonfun$1.apply$mcV$sp(AskSupport.scala:603)
+		at akka.actor.Scheduler$$anon$4.run(Scheduler.scala:126)
+		at scala.concurrent.Future$InternalCallbackExecutor$.unbatchedExecute(Future.scala:601)
+		at scala.concurrent.BatchingExecutor$class.execute(BatchingExecutor.scala:109)
+		at scala.concurrent.Future$InternalCallbackExecutor$.execute(Future.scala:599)
+		at akka.actor.LightArrayRevolverScheduler$TaskHolder.executeTask(LightArrayRevolverScheduler.scala:329)
+		at akka.actor.LightArrayRevolverScheduler$$anon$4.executeBucket$1(LightArrayRevolverScheduler.scala:280)
+		at akka.actor.LightArrayRevolverScheduler$$anon$4.nextTick(LightArrayRevolverScheduler.scala:284)
+		at akka.actor.LightArrayRevolverScheduler$$anon$4.run(LightArrayRevolverScheduler.scala:236)
+		at java.lang.Thread.run(Thread.java:748)
+	Caused by: akka.pattern.AskTimeoutException: Ask timed out on [Actor[akka://flink/user/taskmanager_0#1723018049]] after [10000 ms]. Sender[null] sent message of type "org.apache.flink.runtime.rpc.messages.CallAsync".
+		at akka.pattern.PromiseActorRef$$anonfun$1.apply$mcV$sp(AskSupport.scala:604)
+		... 9 more
+
+13. flink error:
+	未解决
+	Association with remote system [akka.tcp://flink-metrics@flink-taskmanager-] has failed, address is now gated for [50] ms. Reason: [Association failed with [akka.tcp://flink-metrics@flink-taskmanager-]] Caused by: [flink-taskmanager- Name does not resolve]
+		
+		
+	2019-05-05 11:45:09,250 WARN  akka.remote.ReliableDeliverySupervisor                        - Association with remote system [akka.tcp://flink-metrics@flink-taskmanager-57f69bfd69-xr466:34809] has failed, address is now gated for [50] ms. Reason: [Association failed with [akka.tcp://flink-metrics@flink-taskmanager-57f69bfd69-xr466:34809]] Caused by: [flink-taskmanager-57f69bfd69-xr466: Name does not resolve]
+	2019-05-05 11:45:09,250 WARN  akka.remote.ReliableDeliverySupervisor                        - Association with remote system [akka.tcp://flink-metrics@flink-taskmanager-57f69bfd69-5ksrq:34919] has failed, address is now gated for [50] ms. Reason: [Association failed with [akka.tcp://flink-metrics@flink-taskmanager-57f69bfd69-5ksrq:34919]] Caused by: [flink-taskmanager-57f69bfd69-5ksrq: Name does not resolve]
+
+14. Flink 启动后无法读取kafka
+	环境(49华为云) 
+	现象：
+	Committing offsets to Kafka takes longer than the checkpoint interval. Skipping commit of previous offsets because newer complete checkpoint offsets are available. This does not compromise Flink's checkpoint integrity.
+	
+	 Error registering AppInfo mbean
+	javax.management.InstanceAlreadyExistsException: kafka.consumer:type=app-info,id=consumer-2
+	原因：
+	
+	
+15. DOCKERFILE中EntryPoint中执行bash脚本报错：
+	"exec format error"  -> 文件头加上 #!/bin/bash
+	"file not found" -> 可能是windows下创建的文件格式不正确，需要在linux下创建该文件
+
+16. 告警flink进程疑似内存溢出中断
+	OpenJDK 64-Bit Server VM warning: CodeCache is full. Compiler has been disabled.
+	OpenJDK 64-Bit Server VM warning: Try increasing the code cache size using -XX:ReservedCodeCacheSize=
+	CodeCache: size=245760Kb used=229411Kb max_used=235061Kb free=16348Kb
+	 bounds [0x00007f61b7de6000, 0x00007f61c6de6000, 0x00007f61c6de6000]
+	 total_blobs=63125 nmethods=62493 adapters=542
+	 compilation: enabled
+	 
+	 
+15. 告警flink进程redis报错：
+	akka.ConfigurationException: Dispatcher [rediscala.rediscala-client-worker-dispatcher] not configured
+	对比可运行版本和当前版本jar解压文件，发现reference.conf文件差异(新包中不含redisscala配置，是被quartz的配置替换了(reference.conf文件重名了!))
+	解决方法：shade构建时使用插件：
+	
+	<transformer
+			implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+		<resource>reference.conf</resource>
+	</transformer>
