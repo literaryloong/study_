@@ -205,6 +205,18 @@ netstat -an | grep -E "ESTABLISHED|WAIT"
 	find /usr/ -path "*local*" 路径匹配
 	find . -regex ".*\(\.txt\|\.pdf\)$" 基于正则表达式匹配文件路径
 	
+## 磁盘空间 和 查找大文件
+```bash
+find / -type f -size +200M 2>/dev/null|xargs du -shm|sort -nr|awk '{print $2}'|ls -l
+
+ls -ll
+du -h –max-depth=1 *  可以查看当前目录下各文件、文件夹的大小
+du -sh 查询当前目录总大小
+
+```
+
+
+	
 ## 后台启动进程
   *nohup 如果宿主ssh进程关闭，后台nohup进程也会被关闭
   建议使用 screen
@@ -247,12 +259,13 @@ https://serverfault.com/questions/684771/best-way-to-disable-swap-in-linux
 	
 	在~/.bashrc文件中添加
 	alias ka='kubectl get pods -n anxinyun -o wide'
-	alias ks='kubectl get pods -n savoir -o wide'
-	alias ksa='kubectl get services -n anxinyun -o wide'
-	alias kss='kubectl get services -n savoir -o wide'
 	alias kla='kubectl logs -n anxinyun '
-	alias kls='kubectl logs -n savoir '
+	alias ksa='kubectl get services -n anxinyun -o wide'
 	alias klat='kubectl logs -n anxinyun --tail 1000'
+	alias kda='kubectl delete pod -n anxinyun'
+	alias ks='kubectl get pods -n savoir -o wide'
+	alias kss='kubectl get services -n savoir -o wide'
+	alias kls='kubectl logs -n savoir '
 	alias klst='kubectl logs -n savoir --tail 1000'
 
 ## Linux <> Windows 文件互传
@@ -295,3 +308,34 @@ Failed to start LSB: Start Jenkins at boot time
  
 jenkins上持续集成go项目：
 https://blog.csdn.net/aixiaoyang168/article/details/82965854
+
+## HDFS
+Missing Blocks
+1 hdfs fsck -list-corruptfileblocks
+1 hdfs fsck / | egrep -v '^\.+$' | grep -v eplica
+查看上面某一个文件的情况
+1 hdfs fsck /path/to/corrupt/file -locations -blocks -files
+
+解决方法
+如果文件不重要，可以直接删除此文件(hdfs fsck -delete)；或删除后重新复制一份到集群中
+如果不能删除，需要从上面命令中找到发生在哪台机器上，然后到此机器上查看日志。
+
+
+hadoop fs  -stat %r /anxinyun
+
+
+163DORCKER
+sudo nsenter --target `sudo docker inspect -f {{.State.Pid}} a699a640d325` --mount --uts --ipc --net --pid 
+chown 1000:1000 /var/run/docker.sock
+
+## k8s批量删除pod
+kubectl get pods -n savoir| grep savoir-jupyter | awk '{print $1}' | xargs kubectl delete pod -n savoir
+
+## mosquitto管理
+	ps -ef | grep mosq
+	
+	/etc/mosquitto/mosquitto.conf
+	
+## ambari 节点上的服务 显示心跳丢失
+重启ambari代理
+解决方法： service ambari-agent restart

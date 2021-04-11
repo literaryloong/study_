@@ -12,14 +12,21 @@
   ./kafka-topics.sh --create --zookeeper node35:2181,node36:2181,node37:2181 --replication-factor 1 --partitions 3 --topic anxinyun_data
   ./kafka-topics.sh --create --zookeeper test-n1:2181,test-n2:2181,test-n3:2181 --replication-factor 1 --partitions 3 --topic anxinyun_deliver
  
-  ./kafka-console-producer.sh --broker-list 10.8.30.35:6667,10.8.30.36:6667,10.8.30.37:6667 --topic anxinyun_data
-  ./kafka-console-producer.sh --broker-list test-n1:9092,test-n2:9092,test-n3:9092 --topic anxinyun_data
+  ./kafka-console-producer.sh --broker-list 10.8.30.35:6667,10.8.30.36:6667,10.8.30.37:6667 --topic anxinyun_data2
+  ./kafka-console-producer.sh --broker-list test-n1:9092,test-n2:9092,test-n3:9092,test-n4:9092,test-n5:9092 --topic savoir_data
 
-  ./kafka-console-consumer.sh --bootstrap-server anxinyun-m1:6667,anxinyun-n1:6667,anxinyun-n2:6667 --topic anxinyun_data --from-beginning
-  ./kafka-console-consumer.sh --bootstrap-server 10.8.30.35:6667,10.8.30.36:6667,10.8.30.37:6667 --topic anxinyun_data
+  ./kafka-console-consumer.sh --bootstrap-server iota-m1:6667,iota-n1:6667,iota-n2:6667 --topic savoir_alarm --from-beginning
+  ./kafka-console-consumer.sh --bootstrap-server test-n1:9092,test-n2:9092,test-n3:9092,test-n4:9092,test-n5:9092 --topic savoir_data
   
   // on windows
   // I:\WorkSpace\@JAVA\kafka_2.11-0.11.0.0\bin\windows>kafka-console-consumer.bat --bootstrap-server 10.8.30.117:9092 --topic important --from-beginning
+  
+  // 查看消费情况
+  ./kafka-consumer-groups.sh --new-consumer --bootstrap-server test-n1:9092 --list.
+  ./kafka-consumer-groups.sh --new-consumer --bootstrap-server 10.8.30.36:6667 --group et.mainxx --describe
+  
+  ./kafka-consumer-groups.sh --describe --group savoir.master.server --zookeeper iota-m2:2181
+  ./kafka-consumer-groups.sh  --bootstrap-server anxinyun-m1:6667 --group et.mainx --describe
 	
   # 查看topic  (describe)
   ./kafka-topics.sh --list --zookeeper node35:2181,node36:2181,node37:2181
@@ -45,6 +52,14 @@
   ```
   kafka-reassign-partitions --zookeeper node35:2181,node36:2181,node37:2181 --reassignment-json-file increase-replication-factor.json --execute
   
+  ## ambari 中kafka的broker.id
+  在server.properties中log.dir中meta.properties
+  ```
+  #
+#Fri Jul 14 14:50:50 CST 2017
+version=0
+broker.id=1004
+  ```
   
   
   # 删除topic
@@ -55,6 +70,13 @@
   ls /brokers/topics
   rmr /brokers/topics/anxinyun_data2
   删除完成后重启zookeeper和kafka服务；
+  
+  
+  # 常见问题：
+  1. Offset commit failed with a retriable exception
+  consumer提交异常； https://blog.csdn.net/hanghangde/article/details/97945315
+  
+  session.timeout.ms => consumer-group检查组内成员掉线的时间； 消费逻辑处理时间太长导致，两次poll间隔不能超过此阈值；
   
   
 	
@@ -363,3 +385,204 @@ offset.metadata.max.bytes = 1024
 		queue.enqueue.timeout.ms = -1
 		# 异步模式下，每次发送的消息数，当queue.buffering.max.messages或queue.buffering.max.ms满足条件之一时producer会触发发送。
 		batch.num.messages=200
+		
+		
+## KAFKA性能测试
+ ♥♥♥ https://www.cnblogs.com/runnerjack/p/9105784.html ♥♥♥\
+ 
+ ## Kafka Performance Tuning
+ [HERE](https://data-flair.training/blogs/kafka-performance-tuning/)
+ Producer:
++ Compression 减少网络io和延迟 但消耗cpu
++ Batch Size 分包大小的上限；提升该值可以提高吞吐量，但是会造成延迟问题latency
++ linger time 等待组包batch的时间，默认是0
++ Sync or Async
+ 
+ 
+ ## 错误排查
+ 
+ LEADER_NOT_AVAILABLE
+ 
+ 
+ Error while fetching metadata with correlation id
+ 
+ 
+ 
+ amabari中所有节点心跳丢失，无法启动iota-m1上的kafka服务；
+
+查看ambari-agent日志：/var/log/ambari-agent# tail -f ambari-agent.log
+Traceback (most recent call last):
+  File "/usr/lib/python2.6/site-packages/ambari_agent/Controller.py", line 175, in registerWithServer
+    ret = self.sendRequest(self.registerUrl, data)
+  File "/usr/lib/python2.6/site-packages/ambari_agent/Controller.py", line 545, in sendRequest
+    raise IOError('Request to {0} failed due to {1}'.format(url, str(exception)))
+IOError: Request to https://iota-m1:8441/agent/v1/register/iota-n1 failed due to EOF occurred in violation of protocol (_ssl.c:590)
+ERROR 2020-06-16 21:09:28,836 Controller.py:227 - Error:Request to https://iota-m1:8441/agent/v1/register/iota-n1 failed due to EOF occurred in violation of protocol (_ssl.c:590)
+WARNING 2020-06-16 21:09:28,837 Controller.py:228 -  Sleeping for 5 seconds and then trying again 
+
+发现问题是https证书过期
+https://my.oschina.net/aubao/blog/1920933
+
+在每个ambari节点上修改
+vi /etc/ambari-agent/conf/ambari-agent.ini
+force_https_protocol=PROTOCOL_TLSv1_2
+然后，重启所有节点上ambari-agent：
+ambari-agent restart
+
+
+## Zookeeper:.
+[ref csdn](https://blog.csdn.net/java_66666/article/details/81015302)
+统一命名服务、状态同步服务、集群管理、分布式应用配置项的管理等
+zookeeper = 文件系统 + 监听通知机制
+
+znode（目录）
++ Persistent 持久
++ persistent-sequential 持久顺序编号
++ ephemeral 临时目录节点； 客户端端口连接后，节点被删除
++ ephemeral_sequential 临时顺序编号
+
+```shell
+zkServer.sh status [conf/zoo.cfg]
+
+
+zkCli.sh 
+help"
+stat path [watch]
+	set path data [version]
+	ls path [watch]
+	delquota [-n|-b] path
+	ls2 path [watch]
+	setAcl path acl
+	setquota -n|-b val path
+	history 
+	redo cmdno
+	printwatches on|off
+	delete path [version]
+	sync path
+	listquota path
+	rmr path
+	get path [watch]
+	create [-s] [-e] path data acl
+	addauth scheme auth
+	quit 
+	getAcl path
+	close 
+	connect host:port
+	
+create [-s] [-e] path data acl
+	-s: 创建顺序节点
+	-e：创建临时 ephemeral znode
+	path: znode目录路径 /xxx/xx
+	acl: 权限： world:anyone:crwa
+getAcl/setAcl: 设置权限：
+	默认 world:anyone cdrwa
+
+set path data [version]
+	version: 指定数据版本
+	
+get /iota/orchestration/Thing/1/resources
+	{...data....}
+	cZxid = 0x34001de68b 【创建节点ID】
+	ctime = Wed Jun 10 19:51:50 CST 2020 【create time】
+	mZxid = 0x3a0000013e 【修改节点的ID】
+	mtime = Thu Aug 06 10:15:16 CST 2020 【modify time】
+	pZxid = 0x34001de68b 【子节点的ID】
+	cversion = 0 【子节点的版本】
+	dataVersion = 12 【当前节点数据的版本】
+	aclVersion = 0 【权限的版本】
+	ephemeralOwner = 0x0 【时候临时节点 】
+	dataLength = 13971 【数据长度】
+	numChildren = 0 【子节点的数量】
+
+查询状态
+echo stat | nc 192.168.0.68 2181
+查询是否启动
+echo ruok | nc 192.168.0.68 2181
+查询没有处理的节点，临时节点
+echo dump | nc 192.168.0.68 2181
+查询服务器配置
+echo conf | nc 192.168.0.68 2181
+查询客户端连接
+echo cons | nc 192.168.0.68 2181
+查询环境变量
+echo envi | nc 127.0.0.1 2181
+查询健康信息
+echo mntr | nc 192.168.0.68 2181
+
+wchs watch信息； wchc session watchs; wchp path watchs;
+```
+
+Zookeeper集群模式：
+```shell
+# 数据目录
+dataDir=/tmp/zookeeper-1
+# 客户端端口
+clientPort=2181
+# Service.N = ip:通信端口：Leader选举端口
+server.1=127.0.0.1:2888:3888
+server.2=127.0.0.1:2889:3889
+server.3=127.0.0.1:2890:3890
+# tickTime 心跳间隔
+# initLimit Follow连接Leader的超时间隔数
+# syncLimit Leader和Follow通信超时时间间隔
+```
+
+
+## Kafka 数据丢失问题排查：
+[关键参数设置](https://www.cnblogs.com/wwcom123/p/11181680.html)
+### buffer.memory
+　　Kafka的客户端发送数据到服务器，不是来一条就发一条，而是经过缓冲的，也就是说，通过KafkaProducer发送出去的消息都是先进入到客户端本地的内存缓冲里，然后把很多消息收集成一个一个的Batch，再发送到Broker上去的，这样性能才可能高。
+
+　　buffer.memory的本质就是用来约束KafkaProducer能够使用的内存缓冲的大小的，默认值32MB。
+
+　　如果buffer.memory设置的太小，可能导致的问题是：消息快速的写入内存缓冲里，但Sender线程来不及把Request发送到Kafka服务器，会造成内存缓冲很快就被写满。而一旦被写满，就会阻塞用户线程，不让继续往Kafka写消息了。 
+
+　　所以“buffer.memory”参数需要结合实际业务情况压测，需要测算在生产环境中用户线程会以每秒多少消息的频率来写入内存缓冲。经过压测，调试出来一个合理值。
+
+ 
+
+batch.size
+　　每个Batch要存放batch.size大小的数据后，才可以发送出去。比如说batch.size默认值是16KB，那么里面凑够16KB的数据才会发送。
+
+  理论上来说，提升batch.size的大小，可以允许更多的数据缓冲在里面，那么一次Request发送出去的数据量就更多了，这样吞吐量可能会有所提升。
+
+　　但是batch.size也不能过大，要是数据老是缓冲在Batch里迟迟不发送出去，那么发送消息的延迟就会很高。
+
+　　一般可以尝试把这个参数调节大些，利用生产环境发消息负载测试一下。
+
+
+linger.ms
+　　一个Batch被创建之后，最多过多久，不管这个Batch有没有写满，都必须发送出去了。
+
+　　比如说batch.size是16KB，但是现在某个低峰时间段，发送消息量很小。这会导致可能Batch被创建之后，有消息进来，但是迟迟无法凑够16KB，难道此时就一直等着吗？
+
+　　当然不是，假设设置“linger.ms”是50ms，那么只要这个Batch从创建开始到现在已经过了50ms了，哪怕他还没满16KB，也会被发送出去。 
+
+　　所以“linger.ms”决定了消息一旦写入一个Batch，最多等待这么多时间，他一定会跟着Batch一起发送出去。 
+
+　　linger.ms配合batch.size一起来设置，可避免一个Batch迟迟凑不满，导致消息一直积压在内存里发送不出去的情况。
+
+  
+
+max.request.size
+　　决定了每次发送给Kafka服务器请求消息的最大大小。
+
+　　如果发送的消息都是大报文消息，每条消息都是数据较大，例如一条消息可能要20KB。此时batch.size需要调大些，比如设置512KB，buffer.memory也需要调大些，比如设置128MB。 
+
+　　只有这样，才能在大消息的场景下，还能使用Batch打包多条消息的机制。
+
+　　此时“max.request.size”也得同步增加。
+
+ 
+
+retries和retries.backoff.ms
+　　重试机制，也就是如果一个请求失败了可以重试几次，每次重试的间隔是多少毫秒，根据业务场景需要设置。
+
+ 
+
+acks
+
+含义
+0	 Producer 往集群发送数据不需要等到集群的返回，不确保消息发送成功。安全性最低但是效率最高。
+1	 Producer 往集群发送数据只要 Leader 应答就可以发送下一条，只确保 Leader 接收成功。
+-1 或 all	 Producer 往集群发送数据需要所有的ISR Follower 都完成从 Leader 的同步才会发送下一条，确保 Leader 发送成功和所有的副本都成功接收。安全性最高，但是效率最低。

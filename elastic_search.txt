@@ -1,6 +1,6 @@
-#
+# ElasticSearch
 
-# http://10.8.30.37:5601/app/kibana
+### http://10.8.30.37:5601/app/kibana
 
 启动：
 	bin/elasticsearch -d
@@ -8,7 +8,17 @@
 	ps -ef | grep elastic
 	kill -9
 	
-安装head插件
+## 创建索引
+```
+PUT raw_data
+{
+ "mappings":{
+	...
+ }
+}
+```
+	
+### 安装head插件
 https://github.com/mobz/elasticsearch-head
 	git clone git://github.com/mobz/elasticsearch-head.git
 	cd elasticsearch-head
@@ -17,11 +27,11 @@ https://github.com/mobz/elasticsearch-head
 	open http://localhost:9100/
 
 
-安装x-pack监视性能：
+### 安装x-pack监视性能：
 	bin/elasticsearch-plugin install x-pack
  没学会。。。
  
-
+```
  ES性能监视
 	监视内存
 	ps -ef | grep elastic
@@ -35,6 +45,8 @@ https://github.com/mobz/elasticsearch-head
 		GET _cat/indices/savoir_raws
 				health status index uuid pri rep docs.count docs.deleted   store.size  pri.store.size
 				green open savoir_raws X3OCrzSwSwKEZrQhkn9Rrw 5 1 819361 0 118gb 57.2gb
+```
+
 +
 LUCENSE:
 document -> 索引和搜索的主要数据载体，对应写入到ES中的一个doc
@@ -144,3 +156,168 @@ GET savoir_alarms/_search
 > Prefer parameters
 同样的脚本会编译后缓存，使用相同的脚本，并使用params可以提高脚本执行效率
 ；脚本编译受限script.max_compilations_rate，超出会抛出异常
+
+
+## 数据更新 UPDATE
+-- 部分更新
+GET anxinyun_alarms/alarm/4506871f-5671-4c04-bf94-0338f8b3b69c/_update
+{
+  "doc":{
+    "state":1
+  }
+}
+
+
+## 包含指定字段
+GET anxinyun_aggregation/_search
+{
+  "query": {
+    "exists": {
+      "field": "data.wqLevel"
+    }
+  }
+}
+
+## ARRAY | NESTED 下字段查询
+GET savoir_alarms/_search
+{
+  "query": {
+    "nested": {
+      "path": "details",
+      "query": {
+        "bool": {
+          "must": [
+            {"exists": {"field": "details.alarm_pic"}}
+          ]
+        }
+      }
+    }
+  }
+}
+
+## update_by_query
+GET anxinyun_aggregation/_update_by_query?timeout=20m
+{
+  "script":{
+    "source": "ctx._source['data']['physicalvalue']=ctx._source['data']['physicalvalue']*10"
+  },,
+  "query": {
+    "exists": {
+      "field": "data.wqLevel"
+    }
+  }
+}
+
+## aggs
+### TOP HIT EX.
+GET anxinyun_themes/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "range": {
+            "structure": {
+              "gte": 10,
+              "lte": 2000
+            }
+          }
+        }
+      ]
+    }
+  },
+  "size": 0, 
+  "aggs": {
+    "struct": {
+      "terms": {
+        "field": "structure",
+        "size": 10000
+      },
+      "aggs": {
+        "LATEST": {
+          "top_hits": {
+            "size": 1,
+            "sort": [
+              {
+                "collect_time": {
+                  "order": "desc"
+                }
+              }  
+            ],
+            "_source": {
+              "includes": ["structure","collect_time"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+## ES-DUMP
+
+```
+docker run --rm -ti -v /data:/tmp elasticdump/elasticsearch-dump \
+  --input=http://10.8.25.211:9200/raw_data \
+  --output=/tmp/my_index_mapping.json \
+  --type=data \
+  --searchBody='{"query": { "bool": { "must": [{"term": {"deviceId": {"value": "e155b882-d2df-4092-b57d-0a02fae8fca6"}}}, { "range": { "triggerTime": { "lt": "2020-10-24T00:00:00.000+08:00","gt":"2020-10-01T00:00:00.000+08:00" } } } ] } } }'
+  
+
+docker run --rm -ti elasticdump/elasticsearch-dump  -v /data:/tmp --input=./data1.json --output=http://10.8.30.36:9200 --type=data
+```
+
+## ES 数据导出到CSV
+[https://www.cnblogs.com/sanduzxcvbnm/p/12092412.html](https://www.cnblogs.com/sanduzxcvbnm/p/12092412.html)
+
+logstash.yml
+```yml
+path.config: /usr/share/logstash/conf.d/*.conf
+path.logs: /var/log/logstash
+```
+
+convert_csv.conf
+```yml
+input {
+ elasticsearch {
+    hosts => "localhost:9200"
+    index => "anxinyun_weather"
+    query => '{  
+    "query": {
+        "bool": {
+		  "must": [
+			{"term": {
+			  "cityName.keyword": {
+				"value": "南昌"
+			  }
+			}},
+			{
+			  "term": {
+				"dataType.keyword": {
+				  "value": "hour"
+				}
+			  }
+			}
+		  ]
+		}
+      }
+    }'
+  }
+}
+ 
+output {
+  csv {
+    # This is the fields that you would like to output in CSV format.
+    # The field needs to be one of the fields shown in the output when you run your
+    # Elasticsearch query
+ 
+    fields => ["cityName", "precip", "time"]
+  
+    # This is where we store output. We can use several files to store our output
+    # by using a timestamp to determine the filename where to store output.    
+    path => "/tmp/csv-export.csv"
+  }
+}
+```
+docker run --rm -ti -v /home/anxinyun/logstash/data:/tmp -v /home/anxinyun/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml -v /home/anxinyun/logstash/conf.d/:/usr/share/logstash/conf.d/ logstash:6.8.2
+
