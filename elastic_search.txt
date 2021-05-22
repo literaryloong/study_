@@ -254,6 +254,21 @@ GET anxinyun_themes/_search
   }
 }
 
+## 输出指定项
+GET iota-log-2021.05.10/_search?_source=log
+{
+  "query": {
+    
+    "bool": {
+      "must": [
+        {"match": {
+          "log": "60774519"
+        }}
+      ]
+    }
+  }
+}
+
 ## ES-DUMP
 
 ```
@@ -264,7 +279,7 @@ docker run --rm -ti -v /data:/tmp elasticdump/elasticsearch-dump \
   --searchBody='{"query": { "bool": { "must": [{"term": {"deviceId": {"value": "e155b882-d2df-4092-b57d-0a02fae8fca6"}}}, { "range": { "triggerTime": { "lt": "2020-10-24T00:00:00.000+08:00","gt":"2020-10-01T00:00:00.000+08:00" } } } ] } } }'
   
 
-docker run --rm -ti elasticdump/elasticsearch-dump  -v /data:/tmp --input=./data1.json --output=http://10.8.30.36:9200 --type=data
+docker run --rm -ti  -v /data:/tmp elasticdump/elasticsearch-dump --input=./data1.json --output=http://10.8.30.36:9200 --type=data
 ```
 
 ## ES 数据导出到CSV
@@ -321,3 +336,9 @@ output {
 ```
 docker run --rm -ti -v /home/anxinyun/logstash/data:/tmp -v /home/anxinyun/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml -v /home/anxinyun/logstash/conf.d/:/usr/share/logstash/conf.d/ logstash:6.8.2
 
+
+## kibana 使用的lucene语法：
+https://zhuanlan.zhihu.com/p/33791813
+https://segmentfault.com/a/1190000002972420
+
+双引号匹配短语 ""
